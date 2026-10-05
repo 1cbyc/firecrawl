@@ -1,6 +1,7 @@
 use super::{
   document::Document,
   error::ScrapeURLError,
+  formats::FormatKind,
   kinded::{KindedSet, kinded},
   meta::Meta,
   raw_page::RawPageResult,
@@ -30,7 +31,11 @@ pub async fn parse_engine_result(
   meta: &Meta,
   result: RawPageResult,
 ) -> Result<Document, ScrapeURLError> {
-  if pdf::has_pdf_signal(&result) {
+  // rawBase64 wants the response body as-is, so skip format-specific parsing.
+  if meta.options.formats.contains(FormatKind::RawBase64) {
+    tracing::Span::current().record("parser", "fallback");
+    fallback::parse_fallback(meta, result)
+  } else if pdf::has_pdf_signal(&result) {
     tracing::Span::current().record("parser", "pdf");
     pdf::parse_pdf(meta, result).await
   } else if document::has_document_signal(&result) {

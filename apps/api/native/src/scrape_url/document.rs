@@ -44,6 +44,8 @@ pub struct DocumentMetadata {
   pub credits_used: Option<u64>,
   pub concurrency_limited: bool,
   pub concurrency_queue_duration_ms: Option<u64>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub postprocessors_used: Option<Vec<String>>,
 
   pub extra: HashMap<String, Value>,
 }
@@ -58,28 +60,47 @@ pub struct DocumentAttribute {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub markdown: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub html: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub raw_html: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub raw_base64: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub links: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub images: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub screenshot: Option<Url>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub audio: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub video: Option<String>,
   // videos:
-  // extract:
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub extract: Option<Value>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub json: Option<Value>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub summary: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub answer: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub highlights: Option<String>,
   // branding:
   // product:
   // menu:
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub pages: Option<Vec<PdfPage>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub blocks: Option<Vec<PdfBlockItem>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub warning: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub attributes: Option<Vec<DocumentAttribute>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub actions: Option<RawPageActions>,
   // change_tracking:
   pub metadata: DocumentMetadata,

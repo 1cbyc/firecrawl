@@ -212,6 +212,14 @@ impl ScrapeOptions {
   }
 }
 
+/// The format a v1 request asked for; extracted data is kept under that field name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum V1OriginalFormat {
+  Extract,
+  Json,
+}
+
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct InternalOptions {
@@ -235,7 +243,7 @@ pub struct InternalOptions {
   // v1_agent:
   // v1_json_agent:
   // v1_json_system_prompt: String
-  // v1_original_format: extract | json
+  pub v1_original_format: Option<V1OriginalFormat>,
   pub agent_index_only: bool, // pre-confirmation agent key: serve from index only, never touch web/Fire Engine // CFR
   // is_parse:
   pub is_pre_crawl: bool, // whether this scrape is part of a precrawl job

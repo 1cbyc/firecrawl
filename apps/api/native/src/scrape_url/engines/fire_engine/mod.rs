@@ -5,7 +5,6 @@ use std::{
 
 use regex::Regex;
 use tracing::{Instrument, instrument};
-use url::Url;
 
 use self::{
   actions::FireEngineActionResultKind,
@@ -24,6 +23,7 @@ use super::super::{
   raw_page::{
     JavascriptActionContent, RawPageActions, RawPageContent, RawPageResult, ScrapeProxy,
   },
+  transformers::is_youtube_video_url,
 };
 use super::{Engine, EngineOutcome};
 
@@ -54,28 +54,6 @@ pub struct FireEngine {
   url: &'static String,
 }
 
-/// Whether `url` is a YouTube video page, which needs media and cookies for the
-/// YouTube transformer.
-fn is_youtube_video_url(url: &Url) -> bool {
-  let Some(host) = url.host_str() else {
-    return false;
-  };
-
-  if host == "youtube.com" || host.ends_with(".youtube.com") {
-    let is_watch = url.path() == "/watch"
-      && url
-        .query_pairs()
-        .find(|(key, _)| key == "v")
-        .is_some_and(|(_, value)| !value.is_empty());
-    let segments: Vec<&str> = url.path().split('/').filter(|x| !x.is_empty()).collect();
-    is_watch || (segments.len() == 2 && segments[0] == "live")
-  } else if host == "youtu.be" {
-    url.path() != "/"
-  } else {
-    false
-  }
-}
-
 impl FireEngine {
   #[instrument(
     name = "FireEngine::do_scrape",
@@ -89,13 +67,22 @@ impl FireEngine {
     proxy: ScrapeProxy,
     get_cookies: bool,
   ) -> Result<EngineOutcome<RawPageResult>, ScrapeURLError> {
-    let youtube =
-      !meta.options.formats.contains(FormatKind::RawBase64) && is_youtube_video_url(meta.get_url());
+    let wants_raw_base64 = meta.options.formats.contains(FormatKind::RawBase64);
+    let youtube = !wants_raw_base64 && is_youtube_video_url(meta.get_url());
+
+    if wants_raw_base64
+      && (meta.options.effective_wait_for() > 0 || !meta.options.actions.is_empty())
+    {
+      tracing::warn!(
+        "rawBase64 returns the original response body; waitFor and actions are ignored."
+      );
+    }
 
     let mut actions: Vec<InternalAction> = Vec::new();
 
     // Transform waitFor option into an action
-    if let wait_for = meta.options.effective_wait_for()
+    if !wants_raw_base64
+      && let wait_for = meta.options.effective_wait_for()
       && wait_for > 0
     {
       actions.push(
@@ -107,7 +94,9 @@ impl FireEngine {
     }
 
     // Include user-specified actions
-    actions.extend(meta.options.actions.iter().map(|x| x.to_owned().into()));
+    if !wants_raw_base64 {
+      actions.extend(meta.options.actions.iter().map(|x| x.to_owned().into()));
+    }
 
     // Transform screenshot format into an action
     if let Some(screenshot) = meta.options.formats.screenshot() {
@@ -142,6 +131,7 @@ impl FireEngine {
       url: meta.get_url(),
       scrape_id: &meta.id,
       engine: FireEngineScrapeRequestEngine::ChromeCDP,
+      format: wants_raw_base64.then_some(scrape::FireEngineScrapeRequestFormat::RawBase64),
       instant_return: false,
       skip_tls_verification: meta.options.should_skip_tls_verification(),
       headers: &meta.options.headers,

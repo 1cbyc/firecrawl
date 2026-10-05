@@ -4,7 +4,6 @@ use base64::Engine;
 use bytes::Bytes;
 use encoding_rs::{Encoding, UTF_8};
 use mime::Mime;
-use regex::regex;
 
 use crate::_get_inner_json;
 
@@ -16,8 +15,6 @@ use super::super::{
 };
 
 fn deduce_encoding(content: &Bytes, content_type: &str) -> &'static Encoding {
-  let lossy_text = String::from_utf8_lossy(content.as_ref());
-
   {
     if let Some(content_type_charset) = Mime::from_str(content_type)
       .ok()
@@ -25,10 +22,9 @@ fn deduce_encoding(content: &Bytes, content_type: &str) -> &'static Encoding {
     {
       Encoding::for_label(content_type_charset.as_bytes())
     } else if let Some(meta_charset) =
-      regex!(r#"(?i-u)<meta[\s/][^>]*?charset\s*=\s*["']?([^"'>;,\s/]+)"#)
-        .captures(&lossy_text)
+      regex::bytes::regex!(r#"(?i-u)<meta[\s/][^>]*?charset\s*=\s*["']?([^"'>;,\s/]+)"#)
+        .captures(content.as_ref())
         .and_then(|x| x.get(1))
-        .map(|x| x.as_str())
     {
       Encoding::for_label(meta_charset.as_bytes())
     } else {
@@ -40,11 +36,12 @@ fn deduce_encoding(content: &Bytes, content_type: &str) -> &'static Encoding {
 
 #[tracing::instrument(name = "parsers::fallback::parse_fallback", skip_all, err)]
 pub fn parse_fallback(meta: &Meta, result: RawPageResult) -> Result<Document, ScrapeURLError> {
-  let (base64, content, markdown): (String, String, Option<String>) = match result.content {
+  // rawBase64 is the original response body, which only engine-delivered bytes carry.
+  let (base64, content, markdown): (Option<String>, String, Option<String>) = match result.content {
     RawPageContent::Bytes(bytes) => {
       let encoding = deduce_encoding(&bytes, &result.content_type);
       (
-        base64::engine::general_purpose::STANDARD.encode(bytes.as_ref()),
+        Some(base64::engine::general_purpose::STANDARD.encode(bytes.as_ref())),
         encoding.decode(bytes.as_ref()).0.to_string(),
         None,
       )
@@ -55,37 +52,21 @@ pub fn parse_fallback(meta: &Meta, result: RawPageResult) -> Result<Document, Sc
         // still be valid. We can also add some Markdown flavoring.
         let json = _get_inner_json(&text).unwrap_or(text);
         let markdown = Some(format!("```json\n{}\n```", json));
-        (
-          base64::engine::general_purpose::STANDARD.encode(&json),
-          json,
-          markdown,
-        )
+        (None, json, markdown)
       } else if result.content_type.contains("text/plain") {
         // text/plain responses (e.g. llms.txt) are already plain text/markdown.
         // Running them through the HTML-to-markdown converter escapes markdown
         // punctuation like "_", which corrupts underscores inside link URLs. Pass
         // the raw body through untouched instead.
         let text = _get_inner_json(&text).unwrap_or(text);
-        (
-          base64::engine::general_purpose::STANDARD.encode(&text),
-          text.clone(),
-          Some(text),
-        )
+        (None, text.clone(), Some(text))
       } else {
-        (
-          base64::engine::general_purpose::STANDARD.encode(&text),
-          text,
-          None,
-        )
+        (None, text, None)
       }
     }
-    RawPageContent::IndexFakeHTML(html, _) => (
-      base64::engine::general_purpose::STANDARD.encode(&html), // TODO: THIS IS FAKE RAW
-      html,
-      None,
-    ),
+    RawPageContent::IndexFakeHTML(html, _) => (None, html, None),
     RawPageContent::GeneratedMarkdown(md) => (
-      base64::engine::general_purpose::STANDARD.encode(&md),
+      None,
       markdown::to_html_with_options(&md, &markdown::Options::gfm())
         .expect("this error is impossible"),
       Some(md),
@@ -99,12 +80,13 @@ pub fn parse_fallback(meta: &Meta, result: RawPageResult) -> Result<Document, Sc
     markdown: markdown,
     html: None,
     raw_html: Some(content.to_owned()),
-    raw_base64: Some(base64),
+    raw_base64: base64,
     screenshot: result.screenshot,
     links: None,
     images: None,
     audio: None,
     video: None,
+    extract: None,
     json: None,
     summary: None,
     answer: None,
@@ -132,6 +114,7 @@ pub fn parse_fallback(meta: &Meta, result: RawPageResult) -> Result<Document, Sc
       credits_used: None,
       concurrency_limited: false,
       concurrency_queue_duration_ms: None,
+      postprocessors_used: None,
 
       extra: HashMap::new(),
     },
