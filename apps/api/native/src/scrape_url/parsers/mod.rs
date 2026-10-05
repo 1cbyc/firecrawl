@@ -4,7 +4,7 @@ use super::{
   formats::FormatKind,
   kinded::{KindedSet, kinded},
   meta::Meta,
-  raw_page::RawPageResult,
+  raw_page::{RawPageContent, RawPageResult},
 };
 
 pub use self::pdf::{PdfBlockItem, PdfPage};
@@ -34,7 +34,16 @@ pub async fn parse_engine_result(
   // rawBase64 wants the response body as-is, so skip format-specific parsing.
   if meta.options.formats.contains(FormatKind::RawBase64) {
     tracing::Span::current().record("parser", "fallback");
-    fallback::parse_fallback(meta, result)
+    match &result.content {
+      RawPageContent::Bytes(_) => fallback::parse_fallback(meta, result),
+      RawPageContent::BytesOffloaded(_) => Err(ScrapeURLError::UnsupportedFileError {
+        reason: "File exceeds size limit".to_string(),
+      }),
+      // Rendered or indexed content isn't the original body, so no engine served it.
+      _ => Err(ScrapeURLError::NoEnginesLeftError {
+        fallback_list: Vec::new(),
+      }),
+    }
   } else if pdf::has_pdf_signal(&result) {
     tracing::Span::current().record("parser", "pdf");
     pdf::parse_pdf(meta, result).await
