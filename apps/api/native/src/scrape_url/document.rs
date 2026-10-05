@@ -4,7 +4,7 @@ use serde_json::Value;
 use url::Url;
 
 use super::{
-  parsers::{PdfBlockItem, PdfPage},
+  parsers::{PdfPage, PdfPageBlocks},
   raw_page::{RawPageActions, ScrapeProxy},
 };
 use std::{collections::HashMap, fmt::Display};
@@ -77,7 +77,7 @@ pub struct Document {
   // product:
   // menu:
   pub pages: Option<Vec<PdfPage>>,
-  pub blocks: Option<Vec<PdfBlockItem>>,
+  pub blocks: Option<Vec<PdfPageBlocks>>,
   pub warning: Option<String>,
   pub attributes: Option<Vec<DocumentAttribute>>,
   pub actions: Option<RawPageActions>,
